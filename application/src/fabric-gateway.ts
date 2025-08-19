@@ -262,7 +262,7 @@ export class FabricGatewayService {
      */
     private async newIdentity(): Promise<Identity> {
         const credentials = await fs.promises.readFile(
-            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'User1@org1.example.com', 'msp', 'signcerts', 'cert.pem')
+            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'Admin@org1.example.com', 'msp', 'signcerts', 'Admin@org1.example.com-cert.pem')
         );
         const mspId = 'Org1MSP';
         return { mspId, credentials };
@@ -273,7 +273,7 @@ export class FabricGatewayService {
      */
     private async newSigner(): Promise<Signer> {
         const privateKeyPem = await fs.promises.readFile(
-            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'User1@org1.example.com', 'msp', 'keystore', 'priv_sk')
+            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'Admin@org1.example.com', 'msp', 'keystore', 'priv_sk')
         );
         const privateKey = crypto.createPrivateKey(privateKeyPem);
         return signers.newPrivateKeySigner(privateKey);
