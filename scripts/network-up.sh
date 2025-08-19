@@ -67,16 +67,23 @@ if ! docker info > /dev/null 2>&1; then
 fi
 
 # Check if Docker Compose is available
-if ! command -v docker-compose > /dev/null 2>&1; then
+if ! command -v docker-compose > /dev/null 2>&1 && ! docker compose version > /dev/null 2>&1; then
     print_error "Docker Compose is not installed. Please install Docker Compose and try again."
     exit 1
+fi
+
+# Use docker compose v2 if available, fallback to docker-compose v1
+if docker compose version > /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
 fi
 
 print_status "Starting Hyperledger Fabric network..."
 
 # Clean up any existing containers and volumes
 print_status "Cleaning up existing containers and volumes..."
-docker-compose down --volumes --remove-orphans 2>/dev/null || true
+$DOCKER_COMPOSE down --volumes --remove-orphans 2>/dev/null || true
 docker system prune -f 2>/dev/null || true
 
 # Remove existing crypto material and channel artifacts
@@ -95,9 +102,9 @@ cd network
 # Generate certificates
 if ! command -v cryptogen > /dev/null 2>&1; then
     print_warning "cryptogen not found in PATH, using Docker container..."
-    docker run --rm -v $(pwd):/work -w /work hyperledger/fabric-tools:latest cryptogen generate --config=crypto-config.yaml
+    docker run --rm -v $(pwd):/work -w /work hyperledger/fabric-tools:latest cryptogen generate --config=crypto-config.yaml --output="organizations"
 else
-    cryptogen generate --config=crypto-config.yaml
+    cryptogen generate --config=crypto-config.yaml --output="organizations"
 fi
 
 # Generate genesis block and channel transaction
@@ -106,13 +113,13 @@ export FABRIC_CFG_PATH=$(pwd)/configtx
 
 if ! command -v configtxgen > /dev/null 2>&1; then
     print_warning "configtxgen not found in PATH, using Docker container..."
-    docker run --rm -v $(pwd):/work -w /work -e FABRIC_CFG_PATH=/work/configtx hyperledger/fabric-tools:latest configtxgen -profile TwoOrgsApplicationGenesis -outputBlock ./channel-artifacts/genesis.block -channelID system-channel
-    docker run --rm -v $(pwd):/work -w /work -e FABRIC_CFG_PATH=/work/configtx hyperledger/fabric-tools:latest configtxgen -profile TwoOrgsApplicationGenesis -outputCreateChannelTx ./channel-artifacts/${CHANNEL_NAME}.tx -channelID $CHANNEL_NAME
+    # For modern Fabric, we only need the channel config block
+    docker run --rm -v $(pwd):/work -w /work -e FABRIC_CFG_PATH=/work/configtx hyperledger/fabric-tools:latest configtxgen -profile TwoOrgsApplicationGenesis -outputBlock ./channel-artifacts/${CHANNEL_NAME}.block -channelID $CHANNEL_NAME
     docker run --rm -v $(pwd):/work -w /work -e FABRIC_CFG_PATH=/work/configtx hyperledger/fabric-tools:latest configtxgen -profile TwoOrgsApplicationGenesis -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
     docker run --rm -v $(pwd):/work -w /work -e FABRIC_CFG_PATH=/work/configtx hyperledger/fabric-tools:latest configtxgen -profile TwoOrgsApplicationGenesis -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
 else
-    configtxgen -profile TwoOrgsApplicationGenesis -outputBlock ./channel-artifacts/genesis.block -channelID system-channel
-    configtxgen -profile TwoOrgsApplicationGenesis -outputCreateChannelTx ./channel-artifacts/${CHANNEL_NAME}.tx -channelID $CHANNEL_NAME
+    # For modern Fabric, we only need the channel config block
+    configtxgen -profile TwoOrgsApplicationGenesis -outputBlock ./channel-artifacts/${CHANNEL_NAME}.block -channelID $CHANNEL_NAME
     configtxgen -profile TwoOrgsApplicationGenesis -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
     configtxgen -profile TwoOrgsApplicationGenesis -outputAnchorPeersUpdate ./channel-artifacts/Org2MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org2MSP
 fi
@@ -121,38 +128,39 @@ cd ..
 
 # Start the network
 print_status "Starting Docker containers..."
-docker-compose up -d
+$DOCKER_COMPOSE up -d
 
 # Wait for containers to be ready
 print_status "Waiting for containers to start..."
 sleep $DELAY
 
 # Check if containers are running
-if ! docker-compose ps | grep -q "Up"; then
+if ! $DOCKER_COMPOSE ps | grep -q "Up"; then
     print_error "Failed to start containers. Check Docker logs for details."
-    docker-compose logs
+    $DOCKER_COMPOSE logs
     exit 1
 fi
 
 print_status "Network containers started successfully"
 
-# Create channel
+# Create channel using channel participation API
 print_status "Creating channel '$CHANNEL_NAME'..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
     export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
     export CORE_PEER_ADDRESS=peer0.org1.example.com:7051
     
-    peer channel create -o orderer.example.com:7050 -c $CHANNEL_NAME -f /opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${CHANNEL_NAME}.tx --outputBlock /opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${CHANNEL_NAME}.block --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+    # Use osnadmin to create channel via channel participation
+    osnadmin channel join --channelID $CHANNEL_NAME --config-block /opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${CHANNEL_NAME}.block -o orderer.example.com:7053 --ca-file /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem --client-cert /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/tls/server.crt --client-key /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/tls/server.key
 "
 
 sleep $DELAY
 
 # Join Org1 peer to channel
 print_status "Joining Org1 peer to channel..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -166,7 +174,7 @@ sleep $DELAY
 
 # Join Org2 peer to channel
 print_status "Joining Org2 peer to channel..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org2MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
@@ -180,7 +188,7 @@ sleep $DELAY
 
 # Update anchor peers
 print_status "Updating anchor peers..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -190,7 +198,7 @@ docker-compose exec cli bash -c "
     peer channel update -o orderer.example.com:7050 -c $CHANNEL_NAME -f /opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/Org1MSPanchors.tx --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
 "
 
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org2MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
@@ -207,5 +215,5 @@ print_status "Next steps:"
 print_status "1. Deploy chaincode: ./scripts/deploy-chaincode.sh"
 print_status "2. Start the API server: cd application && npm install && npm run dev"
 print_status ""
-print_status "Network status: docker-compose ps"
-print_status "View logs: docker-compose logs -f [service_name]"
+print_status "Network status: $DOCKER_COMPOSE ps"
+print_status "View logs: $DOCKER_COMPOSE logs -f [service_name]"

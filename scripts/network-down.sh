@@ -68,15 +68,22 @@ function print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Use docker compose v2 if available, fallback to docker-compose v1
+if docker compose version > /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
+fi
+
 print_status "Stopping Hyperledger Fabric network..."
 
 # Stop and remove containers
 if [ "$REMOVE_VOLUMES" = true ]; then
     print_status "Stopping containers and removing volumes..."
-    docker-compose down --volumes --remove-orphans
+    $DOCKER_COMPOSE down --volumes --remove-orphans
 else
     print_status "Stopping containers..."
-    docker-compose down --remove-orphans
+    $DOCKER_COMPOSE down --remove-orphans
 fi
 
 # Remove Docker images if requested
@@ -123,14 +130,14 @@ elif [ "$REMOVE_VOLUMES" = true ]; then
     print_status "All containers and volumes have been removed"
     print_status "Crypto material is preserved"
     print_status "To restart the network, run:"
-    print_status "  docker-compose up -d"
+    print_status "  $DOCKER_COMPOSE up -d"
 else
     print_status "Containers stopped, volumes and crypto material preserved"
     print_status "To restart the network, run:"
-    print_status "  docker-compose up -d"
+    print_status "  $DOCKER_COMPOSE up -d"
 fi
 
 print_status ""
-print_status "Container status: docker-compose ps"
+print_status "Container status: $DOCKER_COMPOSE ps"
 print_status "Docker images: docker images | grep hyperledger"
 print_status "Docker volumes: docker volume ls"
