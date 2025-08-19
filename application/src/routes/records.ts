@@ -71,14 +71,14 @@ router.post('/', async (req: Request, res: Response) => {
             message: 'Record created successfully'
         };
 
-        res.status(201).json(response);
+        return res.status(201).json(response);
     } catch (error) {
         console.error('Error creating record:', error);
         const response: ApiResponse = {
             success: false,
             error: 'Internal server error while creating record'
         };
-        res.status(500).json(response);
+        return res.status(500).json(response);
     }
 });
 
@@ -109,14 +109,14 @@ router.get('/', async (req: Request, res: Response) => {
             message: 'Records retrieved successfully'
         };
 
-        res.json(response);
+        return res.json(response);
     } catch (error) {
         console.error('Error getting all records:', error);
         const response: ApiResponse = {
             success: false,
             error: 'Internal server error while retrieving records'
         };
-        res.status(500).json(response);
+        return res.status(500).json(response);
     }
 });
 
@@ -146,7 +146,7 @@ router.get('/:id', async (req: Request, res: Response) => {
             message: 'Record retrieved successfully'
         };
 
-        res.json(response);
+        return res.json(response);
     } catch (error) {
         console.error('Error getting record:', error);
         
@@ -163,7 +163,7 @@ router.get('/:id', async (req: Request, res: Response) => {
             success: false,
             error: 'Internal server error while retrieving record'
         };
-        res.status(500).json(response);
+        return res.status(500).json(response);
     }
 });
 
@@ -193,7 +193,7 @@ router.get('/:id/history', async (req: Request, res: Response) => {
             message: 'Record history retrieved successfully'
         };
 
-        res.json(response);
+        return res.json(response);
     } catch (error) {
         console.error('Error getting record history:', error);
         
@@ -210,7 +210,7 @@ router.get('/:id/history', async (req: Request, res: Response) => {
             success: false,
             error: 'Internal server error while retrieving record history'
         };
-        res.status(500).json(response);
+        return res.status(500).json(response);
     }
 });
 
@@ -254,14 +254,14 @@ router.get('/department/:dept', async (req: Request, res: Response) => {
             message: `Records for department '${paramValue.dept}' retrieved successfully`
         };
 
-        res.json(response);
+        return res.json(response);
     } catch (error) {
         console.error('Error querying records by department:', error);
         const response: ApiResponse = {
             success: false,
             error: 'Internal server error while querying records by department'
         };
-        res.status(500).json(response);
+        return res.status(500).json(response);
     }
 });
 
