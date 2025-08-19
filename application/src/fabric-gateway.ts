@@ -1,4 +1,4 @@
-import { Gateway, Network, Contract, Identity, Signer, signers } from '@hyperledger/fabric-gateway';
+import { Gateway, Network, Contract, Identity, Signer, signers, connect } from '@hyperledger/fabric-gateway';
 import * as grpc from '@grpc/grpc-js';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -29,7 +29,7 @@ export class FabricGatewayService {
             const client = await this.newGrpcConnection();
 
             // Create gateway connection
-            this.gateway = new Gateway({
+            this.gateway = connect({
                 client,
                 identity: await this.newIdentity(),
                 signer: await this.newSigner(),
@@ -48,6 +48,9 @@ export class FabricGatewayService {
             });
 
             // Get network and contract
+            if (!this.gateway) {
+                throw new Error('Failed to create gateway connection');
+            }
             this.network = this.gateway.getNetwork(this.channelName);
             this.contract = this.network.getContract(this.chaincodeName);
 
@@ -77,7 +80,7 @@ export class FabricGatewayService {
         }
 
         try {
-            await this.contract.submitTransaction('InitLedger');
+            await this.contract!.submitTransaction('InitLedger');
             console.log('Ledger initialized successfully');
         } catch (error) {
             console.error('Failed to initialize ledger:', error);
@@ -94,7 +97,7 @@ export class FabricGatewayService {
         }
 
         try {
-            const result = await this.contract.submitTransaction(
+            const result = await this.contract!.submitTransaction(
                 'CreateRecord',
                 input.id,
                 input.name,
@@ -118,7 +121,7 @@ export class FabricGatewayService {
         }
 
         try {
-            const result = await this.contract.evaluateTransaction('ReadRecord', id);
+            const result = await this.contract!.evaluateTransaction('ReadRecord', id);
             return JSON.parse(result.toString()) as ImmutableRecord;
         } catch (error) {
             console.error('Failed to read record:', error);
@@ -135,11 +138,11 @@ export class FabricGatewayService {
         }
 
         try {
-            const args: string[] = ['GetAllRecords'];
+            const args: string[] = [];
             if (bookmark) args.push(bookmark);
             if (pageSize) args.push(pageSize.toString());
 
-            const result = await this.contract.evaluateTransaction(...args);
+            const result = await this.contract!.evaluateTransaction('GetAllRecords', ...args);
             return JSON.parse(result.toString()) as PaginatedQueryResult<ImmutableRecord>;
         } catch (error) {
             console.error('Failed to get all records:', error);
@@ -156,7 +159,7 @@ export class FabricGatewayService {
         }
 
         try {
-            const result = await this.contract.evaluateTransaction('GetRecordHistory', id);
+            const result = await this.contract!.evaluateTransaction('GetRecordHistory', id);
             return JSON.parse(result.toString()) as RecordHistoryEntry[];
         } catch (error) {
             console.error('Failed to get record history:', error);
@@ -177,11 +180,11 @@ export class FabricGatewayService {
         }
 
         try {
-            const args: string[] = ['QueryRecordsByDepartment', department];
+            const args: string[] = [department];
             if (bookmark) args.push(bookmark);
             if (pageSize) args.push(pageSize.toString());
 
-            const result = await this.contract.evaluateTransaction(...args);
+            const result = await this.contract!.evaluateTransaction('QueryRecordsByDepartment', ...args);
             return JSON.parse(result.toString()) as PaginatedQueryResult<ImmutableRecord>;
         } catch (error) {
             console.error('Failed to query records by department:', error);
@@ -198,7 +201,7 @@ export class FabricGatewayService {
         }
 
         try {
-            const result = await this.contract.evaluateTransaction('RecordExists', id);
+            const result = await this.contract!.evaluateTransaction('RecordExists', id);
             return result.toString() === 'true';
         } catch (error) {
             console.error('Failed to check record existence:', error);
@@ -215,7 +218,7 @@ export class FabricGatewayService {
         }
 
         try {
-            const result = await this.contract.evaluateTransaction('GetRecordCount');
+            const result = await this.contract!.evaluateTransaction('GetRecordCount');
             return parseInt(result.toString(), 10);
         } catch (error) {
             console.error('Failed to get record count:', error);
@@ -259,7 +262,7 @@ export class FabricGatewayService {
      */
     private async newIdentity(): Promise<Identity> {
         const credentials = await fs.promises.readFile(
-            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'User1@org1.example.com', 'msp', 'signcerts', 'cert.pem')
+            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'Admin@org1.example.com', 'msp', 'signcerts', 'Admin@org1.example.com-cert.pem')
         );
         const mspId = 'Org1MSP';
         return { mspId, credentials };
@@ -270,7 +273,7 @@ export class FabricGatewayService {
      */
     private async newSigner(): Promise<Signer> {
         const privateKeyPem = await fs.promises.readFile(
-            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'User1@org1.example.com', 'msp', 'keystore', 'priv_sk')
+            path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'Admin@org1.example.com', 'msp', 'keystore', 'priv_sk')
         );
         const privateKey = crypto.createPrivateKey(privateKeyPem);
         return signers.newPrivateKeySigner(privateKey);

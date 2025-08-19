@@ -72,8 +72,15 @@ function print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Use docker compose v2 if available, fallback to docker-compose v1
+if docker compose version > /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
+fi
+
 # Check if network is running
-if ! docker-compose ps | grep -q "Up"; then
+if ! $DOCKER_COMPOSE ps | grep -q "Up"; then
     print_error "Network is not running. Please start the network first with ./scripts/network-up.sh"
     exit 1
 fi
@@ -89,14 +96,14 @@ cd ..
 
 # Package chaincode
 print_status "Packaging chaincode..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     cd /opt/gopath/src/github.com/hyperledger/fabric/peer/chaincode
     peer lifecycle chaincode package ${CHAINCODE_NAME}.tar.gz --path . --lang node --label ${CHAINCODE_NAME}_${CHAINCODE_VERSION}
 "
 
 # Install chaincode on Org1 peer
 print_status "Installing chaincode on Org1 peer..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -108,7 +115,7 @@ docker-compose exec cli bash -c "
 
 # Install chaincode on Org2 peer
 print_status "Installing chaincode on Org2 peer..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org2MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
@@ -120,7 +127,7 @@ docker-compose exec cli bash -c "
 
 # Query installed chaincodes to get package ID
 print_status "Querying installed chaincodes..."
-PACKAGE_ID=$(docker-compose exec cli bash -c "
+PACKAGE_ID=$($DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -139,7 +146,7 @@ print_status "Package ID: $PACKAGE_ID"
 
 # Approve chaincode for Org1
 print_status "Approving chaincode for Org1..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -151,7 +158,7 @@ docker-compose exec cli bash -c "
 
 # Approve chaincode for Org2
 print_status "Approving chaincode for Org2..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org2MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
@@ -163,7 +170,7 @@ docker-compose exec cli bash -c "
 
 # Check commit readiness
 print_status "Checking commit readiness..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -175,7 +182,7 @@ docker-compose exec cli bash -c "
 
 # Commit chaincode
 print_status "Committing chaincode..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -187,7 +194,7 @@ docker-compose exec cli bash -c "
 
 # Query committed chaincodes
 print_status "Querying committed chaincodes..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -199,7 +206,7 @@ docker-compose exec cli bash -c "
 
 # Initialize the ledger
 print_status "Initializing ledger with sample data..."
-docker-compose exec cli bash -c "
+$DOCKER_COMPOSE exec cli bash -c "
     export CORE_PEER_TLS_ENABLED=true
     export CORE_PEER_LOCALMSPID=Org1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
@@ -213,10 +220,10 @@ print_status "Chaincode deployment completed successfully!"
 print_status ""
 print_status "Test the chaincode:"
 print_status "1. Query all records:"
-print_status "   docker-compose exec cli peer chaincode query -C $CHANNEL_NAME -n $CHAINCODE_NAME -c '{\"function\":\"GetAllRecords\",\"Args\":[]}'"
+print_status "   $DOCKER_COMPOSE exec cli peer chaincode query -C $CHANNEL_NAME -n $CHAINCODE_NAME -c '{\"function\":\"GetAllRecords\",\"Args\":[]}'"
 print_status ""
 print_status "2. Create a new record:"
-print_status "   docker-compose exec cli peer chaincode invoke -o orderer.example.com:7050 --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C $CHANNEL_NAME -n $CHAINCODE_NAME --peerAddresses peer0.org1.example.com:7051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt --peerAddresses peer0.org2.example.com:9051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt -c '{\"function\":\"CreateRecord\",\"Args\":[\"test1\",\"Test User\",\"test@example.com\",\"IT\"]}'"
+print_status "   $DOCKER_COMPOSE exec cli peer chaincode invoke -o orderer.example.com:7050 --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C $CHANNEL_NAME -n $CHAINCODE_NAME --peerAddresses peer0.org1.example.com:7051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt --peerAddresses peer0.org2.example.com:9051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt -c '{\"function\":\"CreateRecord\",\"Args\":[\"test1\",\"Test User\",\"test@example.com\",\"IT\"]}'"
 print_status ""
 print_status "Next step: Start the API server"
 print_status "  cd application && npm install && npm run dev"
